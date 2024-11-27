@@ -3,7 +3,7 @@ from petsc4py import PETSc
 import ufl
 from dolfinx import mesh, fem
 from dolfinx.fem.petsc import assemble_matrix, assemble_vector, apply_lifting, create_vector, set_bc, LinearProblem
-from ufl import TrialFunction, TestFunction, inner, dx, grad, ds
+from ufl import TrialFunction, TestFunction, inner, dx, grad, ds, nabla_grad
 import basix
 
 import argparse
@@ -29,7 +29,7 @@ def determine_gradient(V_g, u):
     v = TestFunction(V_g)
 
     a = inner(w, v) * dx
-    L = inner(grad(u), v) * dx
+    L = inner(nabla_grad(u), v) * dx
     problem = LinearProblem(a, L)
     return problem.solve()
 
@@ -68,7 +68,7 @@ element = basix.ufl.element("Lagrange", domain.topology.cell_name(), 1, shape=(d
 V_g = fem.functionspace(domain, element)
 # Ueprod = basix.ufl.mixed_element([Ue, Ue])
 # V_g = fem.functionspace(domain, Ue)
-W = V_g.sub(0).collapse()
+W, map_to_W = V_g.sub(0).collapse()
 
 # Define the exact solution
 
@@ -93,7 +93,7 @@ tdim = domain.topology.dim
 fdim = tdim - 1
 domain.topology.create_connectivity(fdim, tdim)
 # dofs for the coupling boundary
-# dofs_coupling = fem.locate_dofs_geometrical(V, coupling_boundary)
+dofs_coupling = fem.locate_dofs_geometrical(V, coupling_boundary)
 # dofs for the remaining boundary. Can be directly set to u_D
 dofs_remaining = fem.locate_dofs_geometrical(V, remaining_boundary)
 bc_D = fem.dirichletbc(u_D, dofs_remaining)
@@ -102,8 +102,8 @@ bcs.append(bc_D)
 
 if problem is ProblemType.DIRICHLET:
     # Define flux in x direction
-    f_N = fem.Function(V)
-#    f_N.interpolate(lambda x: 2*x[0]) # in gradient in x-direction of u_D
+    f_N = fem.Function(W)
+    f_N.interpolate(lambda x: 2 * x[0])
 
 # Define the variational formualation
 
@@ -125,7 +125,7 @@ else:
 if problem is ProblemType.DIRICHLET:
     precice.initialize(coupling_boundary, read_function_space=V, write_object=f_N)
 elif problem is ProblemType.NEUMANN:
-    precice.initialize(coupling_boundary, read_function_space=V, write_object=u_D)
+    precice.initialize(coupling_boundary, read_function_space=W, write_object=u_D)
 
 # get precice's dt
 precice_dt = precice.get_max_time_step_size()
@@ -143,7 +143,7 @@ F = u * v * ufl.dx + dt * ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx - (u_n + dt
 coupling_expression = precice.create_coupling_expression()
 if problem is ProblemType.DIRICHLET:
     # modify Dirichlet boundary condition on coupling interface
-    bc_coup = fem.dirichletbc(coupling_expression, coupling_boundary)
+    bc_coup = fem.dirichletbc(coupling_expression, dofs_remaining)
     bcs.append(bc_coup)
 if problem is ProblemType.NEUMANN:
     # modify Neumann boundary condition on coupling interface, modify weak
@@ -180,7 +180,7 @@ if problem is ProblemType.DIRICHLET:
 while precice.is_coupling_ongoing():
 
     if precice.requires_writing_checkpoint():
-        precice.store_checkpoint(u_n, t)
+        precice.store_checkpoint(u_n, t, 0)
 
     precice_dt = precice.get_max_time_step_size()
     dt = np.min([fenics_dt, precice_dt])
@@ -205,7 +205,7 @@ while precice.is_coupling_ongoing():
     # Write data to preCICE according to which problem is being solved
     if problem is ProblemType.DIRICHLET:
         # Dirichlet problem reads temperature and writes flux on boundary to Neumann problem
-        determine_gradient(V_g, uh, flux)
+        flux = determine_gradient(V_g, uh)
         flux_x = fem.Function(W)
         flux_x.interpolate(flux.sub(0))
         precice.write_data(flux_x)
@@ -218,8 +218,8 @@ while precice.is_coupling_ongoing():
 
     # roll back to checkpoint
     if precice.requires_reading_checkpoint():
-        u_cp, t_cp = precice.retrieve_checkpoint()
-        u_n.assign(u_cp)
+        u_cp, t_cp, _ = precice.retrieve_checkpoint()
+        u_n.x.array[:] = u_cp.x.array
         t = t_cp
     else:  # update solution
         # Update solution at previous time step (u_n)
@@ -229,7 +229,8 @@ while precice.is_coupling_ongoing():
     if precice.is_time_window_complete():
         u_ref = fem.Function(V)
         u_ref.interpolate(u_D)
-        error, error_pointwise = compute_errors(u_n, u_ref, V, total_error_tol=error_tol)
+        error, error_pointwise = compute_errors(u_n, u_ref, total_error_tol=10 ** -4)
+        # error, error_pointwise = compute_errors(u_n, u_ref, V, total_error_tol=error_tol)
         print("t = %.2f: L2 error on domain = %.3g" % (t, error))
 
     # Update Dirichlet BC
