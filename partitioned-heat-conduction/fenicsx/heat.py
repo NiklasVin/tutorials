@@ -1,9 +1,13 @@
+"""
+This code is mostly taken from: https://jsdokken.com/dolfinx-tutorial/chapter2/heat_equation.html
+"""
+
 import basix.ufl
 from petsc4py import PETSc
 import ufl
 from dolfinx import mesh, fem
 from dolfinx.fem.petsc import assemble_matrix, assemble_vector, apply_lifting, create_vector, set_bc, LinearProblem
-from ufl import TrialFunction, TestFunction, inner, dx, grad, ds, nabla_grad
+from ufl import TrialFunction, TestFunction, inner, dx, grad, ds
 import basix
 
 import argparse
@@ -28,8 +32,8 @@ def determine_gradient(V_g, u):
     w = TrialFunction(V_g)
     v = TestFunction(V_g)
 
-    a = inner(w, v) * dx
-    L = inner(nabla_grad(u), v) * dx
+    a = inner(w, v) * ufl.dx
+    L = inner(grad(u), v) * ufl.dx
     problem = LinearProblem(a, L)
     return problem.solve()
 
@@ -62,12 +66,8 @@ elif participant_name == ProblemType.NEUMANN.value:
 # create domain and function space
 domain, coupling_boundary, remaining_boundary = get_geometry(domain_part)
 V = fem.functionspace(domain, ("Lagrange", 1))
-# V_g = fem.functionspace(domain, ("CG", 1))
-# Ue = basix.ufl.element(family=basix.ElementFamily.P, cell=basix.CellType.triangle, degree=1, shape=(2,))
 element = basix.ufl.element("Lagrange", domain.topology.cell_name(), 1, shape=(domain.geometry.dim,))
 V_g = fem.functionspace(domain, element)
-# Ueprod = basix.ufl.mixed_element([Ue, Ue])
-# V_g = fem.functionspace(domain, Ue)
 W, map_to_W = V_g.sub(0).collapse()
 
 # Define the exact solution
@@ -105,7 +105,6 @@ if problem is ProblemType.DIRICHLET:
     f_N = fem.Function(W)
     f_N.interpolate(lambda x: 2 * x[0])
 
-# Define the variational formualation
 
 u_n = fem.Function(V)  # IV and solution u for the n-th time step
 u_n.interpolate(u_exact)
@@ -118,10 +117,6 @@ else:
     precice = Adapter(adapter_config_filename="precice-adapter-config-N.json", mpi_comm=MPI.COMM_WORLD)
 
 
-# check if initial data is required
-# if precice.requiresInitialData():
-#    precice.writeData(u_n)
-
 if problem is ProblemType.DIRICHLET:
     precice.initialize(coupling_boundary, read_function_space=V, write_object=f_N)
 elif problem is ProblemType.NEUMANN:
@@ -130,6 +125,9 @@ elif problem is ProblemType.NEUMANN:
 # get precice's dt
 precice_dt = precice.get_max_time_step_size()
 dt = np.min([fenics_dt, precice_dt])
+
+
+# Define the variational formualation
 
 # As $f$ is a constant independent of $t$, we can define it as a constant.
 f = fem.Constant(domain, beta - 2 - 2 * alpha)
@@ -143,12 +141,12 @@ F = u * v * ufl.dx + dt * ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx - (u_n + dt
 coupling_expression = precice.create_coupling_expression()
 if problem is ProblemType.DIRICHLET:
     # modify Dirichlet boundary condition on coupling interface
-    bc_coup = fem.dirichletbc(coupling_expression, dofs_remaining)
+    bc_coup = fem.dirichletbc(coupling_expression, dofs_coupling)
     bcs.append(bc_coup)
 if problem is ProblemType.NEUMANN:
     # modify Neumann boundary condition on coupling interface, modify weak
     # form correspondingly
-    F += v * coupling_expression * ds
+    F += coupling_expression * v  * ufl.ds
 
 a = fem.form(ufl.lhs(F))
 L = fem.form(ufl.rhs(F))
@@ -159,7 +157,7 @@ L = fem.form(ufl.rhs(F))
 # sparisty patterns. Especially note as the bilinear form `a` is
 # independent of time, we only need to assemble the matrix once.
 
-A = assemble_matrix(a, bcs=bcs)  # AB HIER WEITERMACHEN
+A = assemble_matrix(a, bcs=bcs)
 A.assemble()
 b = create_vector(L)
 uh = fem.Function(V)
@@ -177,6 +175,10 @@ solver.getPC().setType(PETSc.PC.Type.LU)
 if problem is ProblemType.DIRICHLET:
     flux = fem.Function(V_g)
 
+# boundaries point as always to the end of the timestep
+u_exact.t += dt
+u_D.interpolate(u_exact)
+    
 while precice.is_coupling_ongoing():
 
     if precice.requires_writing_checkpoint():
@@ -186,18 +188,19 @@ while precice.is_coupling_ongoing():
     dt = np.min([fenics_dt, precice_dt])
 
     read_data = precice.read_data(dt)
-    precice.update_coupling_expression(coupling_expression, read_data)
 
     # Update the right hand side reusing the initial vector
     with b.localForm() as loc_b:
         loc_b.set(0)
-    assemble_vector(b, L)  # L...rhs of F
+    assemble_vector(b, L)
+    
+    precice.update_coupling_expression(coupling_expression, read_data)
 
     # Apply Dirichlet boundary condition to the vector (according to the tutorial, the lifting operation is used to preserve the symmetry of the matrix)
     # As far as I understood, the boundary condition bc is updated by
     # u_D.interpolate above, since this function is wrapped into the bc object
-    apply_lifting(b, [a], [[bc_D]])
-    set_bc(b, [bc_D])
+    apply_lifting(b, [a], [bcs])
+    set_bc(b, bcs)
 
     # Solve linear problem
     solver.solve(b, uh.x.petsc_vec)
@@ -208,7 +211,8 @@ while precice.is_coupling_ongoing():
         flux = determine_gradient(V_g, uh)
         flux_x = fem.Function(W)
         flux_x.interpolate(flux.sub(0))
-        precice.write_data(flux_x)
+        #precice.write_data(flux_x)
+        precice.write_data(f_N)
     elif problem is ProblemType.NEUMANN:
         # Neumann problem reads flux and writes temperature on boundary to Dirichlet problem
         precice.write_data(uh)
@@ -229,37 +233,13 @@ while precice.is_coupling_ongoing():
     if precice.is_time_window_complete():
         u_ref = fem.Function(V)
         u_ref.interpolate(u_D)
-        error, error_pointwise = compute_errors(u_n, u_ref, total_error_tol=10 ** -4)
-        # error, error_pointwise = compute_errors(u_n, u_ref, V, total_error_tol=error_tol)
+        error, error_pointwise = compute_errors(u_n, u_ref, total_error_tol=1)
         print("t = %.2f: L2 error on domain = %.3g" % (t, error))
-
-    # Update Dirichlet BC
-    u_exact.t += dt
-    u_D.interpolate(u_exact)
-    # TODO: update time dependent f!
-
-
-# for n in range(num_steps):
-#    # Update Diriclet boundary condition
-#    u_exact.t += dt
-#    u_D.interpolate(u_exact)
-#
-#    # Update the right hand side reusing the initial vector
-#    with b.localForm() as loc_b:
-#        loc_b.set(0)
-#    assemble_vector(b, L) # L...rhs of F
-#
-#    # Apply Dirichlet boundary condition to the vector (according to the tutorial, the lifting operation is used to preserve the symmetry of the matrix)
-#    # As far as I understood, the boundary condition bc is updated by u_D.interpolate above, since this function is wrapped into the bc object
-#    apply_lifting(b, [a], [[bc_D]])
-#    set_bc(b, [bc_D])
-#
-#    # Solve linear problem
-#    solver.solve(b, uh.x.petsc_vec)
-#
-#    # Update solution at previous time step (u_n)
-#    u_n.x.array[:] = uh.x.array
-#
+        
+        # Update Dirichlet BC
+        u_exact.t += dt
+        u_D.interpolate(u_exact)
+        # TODO: update time dependent f (as soon as it is time dependent)!
 
 
 precice.finalize()
