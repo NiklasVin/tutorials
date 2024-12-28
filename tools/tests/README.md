@@ -21,7 +21,7 @@ Workflow for the preCICE v3 release testing:
 3. Trigger the GitHub Actions Workflow. Until we merge the workflow to develop, this can only happen via the [GitHub CLI](https://cli.github.com/):
 
     ```bash
-    gh workflow run run_testsuite_manual.yml -f suites=release_test -f build_args="PRECICE_REF:150d4ee,OPENFOAM_ADAPTER_REF:a0e5263,PYTHON_BINDINGS_REF:49c2af0,FENICS_ADAPTER_REF:6f99859,TUTORIALS_REF:a1d46c4" --ref=develop
+    gh workflow run run_testsuite_manual.yml -f suites=release_test -f build_args="PRECICE_REF:v3.1.1,PRECICE_PRESET:production-audit,OPENFOAM_ADAPTER_REF:v1.3.0,PYTHON_BINDINGS_REF:v3.1.0,FENICS_ADAPTER_REF:v2.1.0,SU2_VERSION:7.5.1,SU2_ADAPTER_REF:64d4aff,TUTORIALS_REF:340b447" --ref=develop
     ```
 
 4. Go to the tutorials [Actions](https://github.com/precice/tutorials/actions) page and find the running workflow
@@ -61,7 +61,7 @@ gh workflow run run_testsuite_manual.yml -f suites=fenics_test --ref=develop
 Another example, to use the latest releases and enable debug information of the tests:
 
 ```shell
-gh workflow run run_testsuite_manual.yml -f suites=fenics_test -f build_args="PRECICE_REF:v2.5.0,OPENFOAM_ADAPTER_REF:v1.2.3,PYTHON_BINDINGS_REF:v2.5.0.4,FENICS_ADAPTER_REF:v1.4.0" -f loglevel=DEBUG --ref=develop
+gh workflow run run_testsuite_manual.yml -f suites=fenics_test -f build_args="PRECICE_REF:v3.1.1,PRECICE_PRESET:production-audit,OPENFOAM_ADAPTER_REF:v1.3.0,PYTHON_BINDINGS_REF:v3.1.0,FENICS_ADAPTER_REF:v2.1.0,SU2_VERSION:7.5.1,SU2_ADAPTER_REF:64d4aff,TUTORIALS_REF:340b447" -f loglevel=DEBUG --ref=develop
 ```
 
 where the `*_REF` should be a specific [commit-ish](https://git-scm.com/docs/gitglossary#Documentation/gitglossary.txt-aiddefcommit-ishacommit-ishalsocommittish).
@@ -71,7 +71,7 @@ Example output:
 ```text
 Run cd tools/tests
   cd tools/tests
-  python systemtests.py --build_args=PRECICE_REF:v2.5.0,OPENFOAM_ADAPTER_REF:v1.2.3,PYTHON_BINDINGS_REF:v2.5.0.4,FENICS_ADAPTER_REF:v1.4.0 --suites=fenics_test --log-level=DEBUG
+  python systemtests.py --build_args=PRECICE_REF:v3.1.1,PRECICE_PRESET:production-audit,OPENFOAM_ADAPTER_REF:v1.3.0,PYTHON_BINDINGS_REF:v3.1.0,FENICS_ADAPTER_REF:v2.1.0 --suites=fenics_test --log-level=DEBUG
   cd ../../
   shell: /usr/bin/bash -e {0}
 INFO: About to run the following systemtest in the directory /home/precice/runners_root/actions-runner-tutorial/_work/tutorials/tutorials/runs:
@@ -83,7 +83,7 @@ From https://github.com/precice/tutorials
 DEBUG: Building docker image for Flow over heated plate (fluid-openfoam, solid-fenics)
 DEBUG: Running tutorial Flow over heated plate (fluid-openfoam, solid-fenics)
 DEBUG: Running fieldcompare for Flow over heated plate (fluid-openfoam, solid-fenics)
-DEBUG: extracting /home/precice/runners_root/actions-runner-tutorial/_work/tutorials/tutorials/flow-over-heated-plate/reference-data/fluid-openfoam_solid-fenics.tar.gz into /home/precice/runners_root/actions-runner-tutorial/_work/tutorials/tutorials/runs/flow-over-heated-plate_fluid-openfoam-solid-fenics_2023-11-19-211723/reference_results
+DEBUG: extracting /home/precice/runners_root/actions-runner-tutorial/_work/tutorials/tutorials/flow-over-heated-plate/reference-results/fluid-openfoam_solid-fenics.tar.gz into /home/precice/runners_root/actions-runner-tutorial/_work/tutorials/tutorials/runs/flow-over-heated-plate_fluid-openfoam-solid-fenics_2023-11-19-211723/reference_results
 Using log-level: DEBUG
 +---------------------------------------------------------+---------+-------------------+-----------------+-----------------------+
 | systemtest                                              | success | building time [s] | solver time [s] | fieldcompare time [s] |
@@ -109,7 +109,7 @@ Inside the archive, a test-specific subfolder like `flow-over-heated-plate_fluid
 
 In order for the systemtests to pick up the tutorial we need to define a `metadata.yaml` in the folder of the tutorial. There are a few `metadata.yaml` already present to get inspiration from. You can also have a look at the implementation details but normally the currently available ones should be easy to adopt. You can check your metadata parsing by `python print_metadata.py` and `python print_case_combinations.py`
 
-### Adding Testsuites
+### Adding testsuites
 
 To add a testsuite just open the `tests.yaml` file and use the output of `python print_case_combinations.py` to add the right case combinations you want to test. Note that you can specify a `reference_result` which is not yet present. The `generate_reference_data.py` will pick that up and create it for you.
 Note that its important to carefully check the paths of the `reference_result` in order to not have typos in there. Also note that same cases in different testsuites should use the same `reference_result`.
@@ -118,6 +118,10 @@ Note that its important to carefully check the paths of the `reference_result` i
 
 Since we need data to compare against, you need to run `python generate_reference_data.py`. This process might take a while.
 Please include the generated reference results in the pull request as they are strongly connected to the new testsuites.
+
+## Adding repositories
+
+If you want to trigger a testsuite from a new repository, you need to add a workflow file to that repository (under `.github/workflows/`). You can, for example, copy and adjust [the one from the OpenFOAM adapter](https://github.com/precice/openfoam-adapter/blob/develop/.github/workflows/system-tests.yaml). Then, you need a new label to trigger the workflow (e.g. `Issues`->`Labels`->`New label`). Last, in the [preCICE organization settings](https://github.com/organizations/precice/settings), you need to add the new repository to the action secret `WORKFLOW_DISPATCH_TOKEN` and to the default actions runner group. Adding the new label directly to the pull request in which you add the workflow should already trigger the system tests, compare the [pull request in the `precice` repository](https://github.com/precice/precice/pull/2052).
 
 ## Implementation details
 
@@ -244,6 +248,9 @@ openfoam-adapter:
     PRECICE_REF:
       description: Version of preCICE to use
       default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
     PLATFORM:
       description: Dockerfile platform used
       default: "ubuntu_2204"
@@ -286,7 +293,7 @@ volumes:
 command: >
   /bin/bash -c "id && 
   cd '/runs/{{ tutorial_folder }}/{{ case_folder }}' &&
-  {{ run }} | tee {{ case_folder }}.log 2>&1"
+  {{ run }} | tee system-tests_{{ case_folder }}.log 2>&1"
 ```
 
 This template defines:
@@ -308,19 +315,19 @@ test_suites:
         case_combination:
           - fluid-openfoam
           - solid-openfoam
-        reference_result: ./flow-over-heated-plate/reference-data/fluid-openfoam_solid-openfoam.tar.gz
+        reference_result: ./flow-over-heated-plate/reference-results/fluid-openfoam_solid-openfoam.tar.gz
   openfoam_adapter_release:
     tutorials:
       - path: flow-over-heated-plate
         case_combination:
           - fluid-openfoam
           - solid-openfoam
-        reference_result: ./flow-over-heated-plate/reference-data/fluid-openfoam_solid-openfoam.tar.gz
+        reference_result: ./flow-over-heated-plate/reference-results/fluid-openfoam_solid-openfoam.tar.gz
       - path: flow-over-heated-plate
         case_combination:
           - fluid-openfoam
           - solid-fenics
-        reference_result: ./flow-over-heated-plate/reference-data/fluid-openfoam_solid-fenics.tar.gz
+        reference_result: ./flow-over-heated-plate/reference-results/fluid-openfoam_solid-fenics.tar.gz
 ```
 
 This defines two test suites, namely `openfoam_adapter_pr` and `openfoam_adapter_release`. Each of them defines which case combinations of which tutorials to run.

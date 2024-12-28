@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
 error() {
     echo "Error: $1" >&2
@@ -40,7 +40,17 @@ clean_precice_logs() {
             ./precice-*-watchintegral-*.log \
             ./core
         rm -rfv ./precice-profiling/ profiling.json trace.json
-        rm -rfv ./preCICE-output/
+        rm -rfv ./precice-exports/
+    )
+}
+
+clean_case_logs() {
+    (
+        set -e -u
+        cd "$1"
+        echo "- Cleaning up general case logs in $(pwd)"
+        CASENAME="$(readlink -f "$0" | xargs dirname | xargs basename)"
+        rm -fv "./$CASENAME.log"
     )
 }
 
@@ -49,11 +59,12 @@ clean_calculix() {
         set -e -u
         cd "$1"
         echo "- Cleaning up CalculiX case in $(pwd)"
-        rm -fv ./*.cvg ./*.dat ./*.frd ./*.sta ./*.12d spooles.out dummy
+        rm -fv ./*.cvg ./*.dat ./*.frd ./*.sta ./*.12d ./*.rout spooles.out dummy
         rm -fv WarnNodeMissMultiStage.nam
         rm -fv ./*.eig
         rm -fv ./*.vtk
         clean_precice_logs .
+        clean_case_logs .
     )
 }
 
@@ -65,6 +76,7 @@ clean_codeaster() {
         rm -fv ./*.mess ./*.resu ./*.rmed
         rm -rfv ./REPE_OUT/*
         clean_precice_logs .
+        clean_case_logs .
     )
 }
 
@@ -75,6 +87,7 @@ clean_dealii() {
         echo "- Cleaning up deal.II case in $(pwd)"
         rm -rfv ./dealii-output/
         clean_precice_logs .
+        clean_case_logs .
     )
 }
 
@@ -85,6 +98,7 @@ clean_fenics() {
         echo "- Cleaning up FEniCS case in $(pwd)"
         rm -rfv ./output/
         clean_precice_logs .
+        clean_case_logs .
     )
 }
 
@@ -95,6 +109,7 @@ clean_nutils() {
         echo "- Cleaning up Nutils case in $(pwd)"
         rm -fv ./*.vtk
         clean_precice_logs .
+        clean_case_logs .
     )
 }
 
@@ -110,6 +125,7 @@ clean_openfoam() {
             rm -rfv 0/uniform/functionObjects/functionObjectProperties history
         fi
         clean_precice_logs .
+        clean_case_logs .
     )
 }
 
@@ -118,8 +134,9 @@ clean_su2() {
         set -e -u
         cd "$1"
         echo "- Cleaning up SU2 case in $(pwd)"
-        rm -fv ./restart_flow_*.dat forces_breakdown.dat ./surface_flow_*.csv ./flow_*.vtk ./history_*.vtk
+        rm -fv ./restart_flow_*.dat ./restart_flow_*.csv forces_breakdown.dat ./surface_flow_*.csv ./flow_*.vtk ./history_*.vtk ./history.vtk ./history_*.csv ./history.csv ./surface_flow_*.vtu ./flow_*.vtu
         clean_precice_logs .
+        clean_case_logs .
     )
 }
 
@@ -143,17 +160,39 @@ clean_dune() {
         rm -fv ./*.vtu
         rm -rfv ./output/
         clean_precice_logs .
+        clean_case_logs .
     )
 }
 
 clean_dumux() {
    (
         set -e -u
-	cd "$1"
-	echo "- Cleaning up DuMuX case in $(pwd)"
-	rm -fv ./*.vtu
-	rm -fv ./*.pvd
-	clean_precice_logs .
+        cd "$1"
+        echo "- Cleaning up DuMuX case in $(pwd)"
+        rm -fv ./*.vtu
+        rm -fv ./*.pvd
+        clean_precice_logs .
+        clean_case_logs .
    )
+}
 
+clean_fmi() {
+    (
+        set -e -u
+        cd "$1"
+        echo "- Cleaning up FMI case in $(pwd)"
+        rm -rfv ./output/
+        clean_precice_logs .
+        clean_case_logs .
+    )
+}
+
+clean_matlab(){
+    (
+	set -e -u
+	cd "$1"
+	echo "- Cleaning up MATLAB case in $(pwd)"
+	clean_precice_logs .
+	clean_case_logs .
+    )	
 }

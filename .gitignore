@@ -13,12 +13,15 @@ out
 *.vtk
 *.vtu
 *.pvd
+*.series
 
 # preCICE
 precice-profiling/
 precice-run/
 core
-precice-*-events.json
+profiling.json
+profiling.csv
+trace.json
 
 # C++
 *.o
@@ -48,6 +51,7 @@ history
 postProcessing/
 *.foam
 *.OpenFOAM
+dynamicCode
 
 # CalculiX
 spooles.out
@@ -58,6 +62,7 @@ dummy
 *.frd
 *.sta
 *.eig
+*.rout
 
 # code_aster
 *.mess
@@ -69,6 +74,7 @@ REPE_OUT/
 restart_flow_*.dat
 forces_breakdown.dat
 surface_flow_*.csv
+history*.csv
 
 # ASTE
 result.stats.json

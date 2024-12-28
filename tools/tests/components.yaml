@@ -5,6 +5,9 @@ bare: # A default component used when the solver does not have any dependencies 
     PRECICE_REF:
       description: Version of preCICE to use
       default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
     PLATFORM:
       description: Dockerfile platform used
       default: "ubuntu_2204"
@@ -19,6 +22,9 @@ python-bindings:
     PRECICE_REF:
       description: Version of preCICE to use
       default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
     PLATFORM:
       description: Dockerfile platform used
       default: "ubuntu_2204"
@@ -36,6 +42,9 @@ openfoam-adapter:
     PRECICE_REF:
       description: Version of preCICE to use
       default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
     PLATFORM:
       description: Dockerfile platform used
       default: "ubuntu_2204"
@@ -58,6 +67,9 @@ fenics-adapter:
     PRECICE_REF:
       description: Version of preCICE to use
       default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
     PLATFORM:
       description: Dockerfile platform used
       default: "ubuntu_2204"
@@ -78,6 +90,9 @@ nutils-adapter:
     PRECICE_REF:
       description: Version of preCICE to use
       default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
     PLATFORM:
       description: Dockerfile platform used
       default: "ubuntu_2204"
@@ -95,15 +110,41 @@ calculix-adapter:
     PRECICE_REF:
       description: Version of preCICE to use
       default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
     PLATFORM:
       description: Dockerfile platform used
       default: "ubuntu_2204"
     TUTORIALS_REF:
       description: Tutorial git reference to use
       default: "master"
-    CALULIX_VERSION:
+    CALCULIX_VERSION:
       description: Version of Calculix to use
       default: "2.20"
-    CALULIX_ADAPTER_REF:
+    CALCULIX_ADAPTER_REF:
       description: Version of Calculix-Adapter to use
+      default: "master"
+
+su2-adapter:
+  repository: https://github.com/precice/su2-adapter
+  template: component-templates/su2-adapter.yaml
+  build_arguments:
+    PRECICE_REF:
+      description: Version of preCICE to use
+      default: "main"
+    PRECICE_PRESET:
+      description: CMake preset of preCICE
+      default: "production-audit"
+    PLATFORM:
+      description: Dockerfile platform used
+      default: "ubuntu_2204"
+    TUTORIALS_REF:
+      description: Tutorial git reference to use
+      default: "master"
+    SU2_VERSION:
+      description: Version of SU2 to use
+      default: "7.5.1"
+    SU2_ADAPTER_REF:
+      description: Version of SU2-Adapter to use
       default: "master"
