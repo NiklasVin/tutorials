@@ -23,11 +23,14 @@ Heat equation with mixed boundary conditions. (Neumann problem)
   u = 1 + x^2 + alpha*y^2 + \beta*t
   f = beta - 2 - 2*alpha
 """
+import petsc4py
+import sys
+from petsc4py import PETSc
+petsc4py.init(sys.argv)
 import argparse
 import numpy as np
 from mpi4py import MPI
 import basix.ufl
-from petsc4py import PETSc
 import ufl
 from dolfinx import fem, io, mesh as msh, geometry
 from dolfinx.fem.petsc import assemble_matrix, assemble_vector, apply_lifting, create_vector, set_bc
@@ -75,6 +78,7 @@ class GradientSolver:
         assemble_vector(b, L)
         b.ghostUpdate(addv=PETSc.InsertMode.ADD_VALUES, mode=PETSc.ScatterMode.REVERSE)
         self.solver.solve(b, self.returnValue.x.petsc_vec)
+        self.returnValue.x.scatter_forward()
         return self.returnValue
 
 
@@ -162,7 +166,7 @@ precice, precice_dt, initial_data = None, 0.0, None
 if problem is ProblemType.DIRICHLET:
     precice = Adapter(adapter_config_filename="precice-adapter-config-D.json", mpi_comm=comm)
 else:
-    precice = Adapter(adapter_config_filename="precice-adapter-config-N.json", mpi_comm=comm)
+    precice = Adapter(adapter_config_filename="precice-adapter-config-N.json", mpi_comm=comm, digit_cutoff=13)
 
 coupling_mesh = None
 if problem is ProblemType.DIRICHLET:
@@ -231,6 +235,7 @@ if problem is ProblemType.DIRICHLET:
 # values of the boundary conditions are set to the end of the timestep
 u_exact.t += dt
 u_D.interpolate(u_exact)
+u_D.x.scatter_forward()
 
 bb_tree = geometry.bb_tree(domain, domain.geometry.dim)
 cell_candidates = geometry.compute_collisions_points(bb_tree, dofs_coupling_coordinates)
@@ -288,22 +293,27 @@ while precice.is_coupling_ongoing():
     if precice.requires_reading_checkpoint():
         u_cp, t_cp, _ = precice.retrieve_checkpoint()
         u_n.x.array[:] = u_cp.x.array
+        u_n.x.scatter_forward()
         t = t_cp
     else:  # update solution
         # Update solution at previous time step (u_n)
         u_n.x.array[:] = uh.x.array
+        u_n.x.scatter_forward()
         f_err.x.array[:] = np.abs(u_n.x.array - u_D.x.array)
+        f_err.x.scatter_forward()
         t += float(dt)
         vtxwriter.write(t)
 
     if precice.is_time_window_complete():
         u_ref = fem.Function(V)
         u_ref.interpolate(u_D)
-        error, error_pointwise = compute_errors(u_n, u_ref, total_error_tol=error_tol)
+        u_ref.x.scatter_forward()
+        error, error_pointwise = compute_errors(u_n, u_ref, total_error_tol=1e-4)
         print("t = %.2f: L2 error on domain = %.3g" % (t, error))
         # Update Dirichlet BC
         u_exact.t += dt
         u_D.interpolate(u_exact)
+        u_D.x.scatter_forward()
         # TODO: update time dependent f (as soon as it is time dependent)!
 
 precice.finalize()
