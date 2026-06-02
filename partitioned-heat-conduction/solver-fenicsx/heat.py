@@ -116,7 +116,7 @@ V_coup = None
 if problem is ProblemType.DIRICHLET:
     V_coup = V
 else:
-    V_coup = W
+    V_coup = V_g
 
 # Define the exact solution
 
@@ -155,9 +155,8 @@ dofs_coupling = fem.locate_dofs_geometrical(V_coup, coupling_boundary)
 dofs_coupling_coordinates = V_coup.tabulate_dof_coordinates()[dofs_coupling]
 
 if problem is ProblemType.DIRICHLET:
-    # Define flux in x direction
-    f_N = fem.Function(W)
-    f_N.interpolate(lambda x: 2 * x[0])
+    f_N = fem.Function(V_g)
+    f_N.interpolate(gradient_solver.compute(u_D))
 
 u_n = fem.Function(V)  # IV and solution u for the n-th time step
 u_n.interpolate(u_exact)
@@ -173,7 +172,7 @@ if problem is ProblemType.DIRICHLET:
     coupling_mesh = CouplingMesh("Dirichlet-Mesh", coupling_boundary, {"Temperature": V}, {"Heat-Flux": f_N})
     precice.initialize([coupling_mesh])
 elif problem is ProblemType.NEUMANN:
-    coupling_mesh = CouplingMesh("Neumann-Mesh", coupling_boundary, {"Heat-Flux": V}, {"Temperature": u_D})
+    coupling_mesh = CouplingMesh("Neumann-Mesh", coupling_boundary, {"Heat-Flux": V_g}, {"Temperature": u_D})
     precice.initialize([coupling_mesh])
 
 # get precice's dt
@@ -205,7 +204,8 @@ if problem is ProblemType.DIRICHLET:
 if problem is ProblemType.NEUMANN:
     # modify Neumann boundary condition on coupling interface, modify weak
     # form correspondingly
-    F += dt * coupling_function * v * ufl.ds
+    n = ufl.FacetNormal(domain)
+    F -= dt * ufl.inner(coupling_function, n) * v * ufl.ds
 
 a = fem.form(ufl.lhs(F))
 L = fem.form(ufl.rhs(F))
@@ -256,6 +256,7 @@ while precice.is_coupling_ongoing():
 
     # Update the coupling expression with the new read data
     precice.read_data(read_mesh, name_read, dt, coupling_function)
+    coupling_function.x.scatter_forward()
 
     # Update the right hand side reusing the initial vector
     with b.localForm() as loc_b:
@@ -277,11 +278,9 @@ while precice.is_coupling_ongoing():
     # Write data to preCICE according to which problem is being solved
     if problem is ProblemType.DIRICHLET:
         # Dirichlet problem reads temperature and writes flux on boundary to Neumann problem
-        flux = gradient_solver.compute(uh)
-        flux_x = fem.Function(W)
-        flux_x.interpolate(flux.sub(0))
-        flux_x.x.scatter_forward()
-        precice.write_data(coupling_mesh.get_name(), "Heat-Flux", flux_x)
+        flux.interpolate(gradient_solver.compute(uh))
+        flux.x.scatter_forward()
+        precice.write_data(coupling_mesh.get_name(), "Heat-Flux", flux)
     elif problem is ProblemType.NEUMANN:
         # Neumann problem reads flux and writes temperature on boundary to Dirichlet problem
         precice.write_data(coupling_mesh.get_name(), "Temperature", uh)
